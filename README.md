@@ -20,5 +20,8 @@ GET /secret
 - Checks that the user has "secret access" (ie. Is their username 'admin')
 - Says "Hello Secret Agent (user)"
 
+GET /login
+- If an Authorization header isn't included, it responds with a 401 status and a WWW-Authenticate header, prompting the browser provide a Basic authentication form.  If one is provided, it redirects to "/".  Demonstrates prompting for authentication, but impractical without using session cookies to persist the authentication.
+
 I'm using this project to test out HTTP server practices with Go, and have public examples to point others to.
 So any comments and constructive criticisms are welcomed.

@@ -9,6 +9,8 @@ import (
 	"github.com/codegangsta/martini"
 )
 
+const ANON_USER string = "guest"
+
 // Type which, through reflection, Martini uses to dependency inject the user
 // found by the Authentication middleware
 type User interface{}
@@ -25,6 +27,20 @@ func main() {
 	// but doesn't care for security reasons (ie. No authorization check)
 	m.Get("/", func(u User) string {
 		return fmt.Sprintf("Hello %s!", u)
+	})
+
+	// Register a route which requires the client to use Basic Authentication.
+	// If they don't, respond with 401 status and a WWW-Authenticate header
+	m.Get("/login", func(u User, req *http.Request, res http.ResponseWriter) {
+		// If they're already logged in, redirect to "/"
+		if u != ANON_USER {
+			http.Redirect(res, req, "/", 302)
+			return
+		}
+
+		// Otherwise, prompt for login
+		res.Header().Set("WWW-Authenticate", "Basic realm=\"Authentication Required\"")
+		http.Error(res, "Basic Authentication Required", http.StatusUnauthorized)
 	})
 
 	// Register a route which requires the authenticated user to have specific authorization
@@ -45,7 +61,7 @@ func Authentication(c martini.Context, req *http.Request, res http.ResponseWrite
 	a := req.Header.Get("Authorization")
 	if a == "" {
 		// No header, user must be guest
-		c.MapTo("guest", (*User)(nil))
+		c.MapTo(ANON_USER, (*User)(nil))
 		return
 	}
 
