@@ -6,7 +6,7 @@ A generic HTTP server program for demonstrative purposes.
 Starts a simple server which:
 - Recovers from any panics that might occur while handling requests.
 - Logs the requests that come in, and how long they take to handle.
-- Authenticates the user by the Authorization header in the request, using Basic Authorization
+- Authenticates the user by the Authorization header or the session.
 - Hands control over to the router.
 
 The router can take multiple handlers for the same route.

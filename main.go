@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/codegangsta/martini"
+	"github.com/martini-contrib/sessions"
 )
 
 const ANON_USER string = "guest"
@@ -19,6 +20,13 @@ func main() {
 	// Starting a standard martini server,
 	// with logging and panic recovery middleware built in
 	m := martini.Classic()
+
+	// Register middleware for storing session details in cookies
+	// NOTE: In a real world example, you do NOT want to store all your session
+	// data in cookies.  Just an ID or Token, and store everything else in a DB.
+	// Other session store implementations at: https://github.com/gorilla/sessions
+	store := sessions.NewCookieStore([]byte("secret123"))
+	m.Use(sessions.Sessions("github.com/rolaveric/GoHttp", store))
 
 	// Register middleware which authenticates the client
 	m.Use(Authentication)
@@ -53,15 +61,22 @@ func main() {
 }
 
 // Middleware for Martini which tries to identify the request user by the Authorization header.
-// If no such header exists, it assumes it's a guest.
+// If no such header exists, it checks the session cookie.  If that also fails, it assumes the user is a guest.
 // If the header exists but can't be decoded, it returns a 401 status.
 // It uses Martini's dependency injection system to register the user for later consumption.
-func Authentication(c martini.Context, req *http.Request, res http.ResponseWriter) {
+func Authentication(c martini.Context, req *http.Request, res http.ResponseWriter, session sessions.Session) {
 	// Get the Authorization header
 	a := req.Header.Get("Authorization")
 	if a == "" {
-		// No header, user must be guest
-		c.MapTo(ANON_USER, (*User)(nil))
+		// No header - Check for a session
+		u := session.Get("user")
+		if u == nil {
+			// No session either, set the user as a guest
+			c.MapTo(ANON_USER, (*User)(nil))
+		} else {
+			// Register the user from the session
+			c.MapTo(u, (*User)(nil))
+		}
 		return
 	}
 
@@ -89,6 +104,9 @@ func Authentication(c martini.Context, req *http.Request, res http.ResponseWrite
 	// At this point, you would normally lookup a user database
 	// Since this is an example - we're just accepting the username as is
 	c.MapTo(s[0], (*User)(nil))
+
+	// Set the user in the session
+	session.Set("user", s[0])
 }
 
 // Returns a handler function which checks that the authenticated user for the request
