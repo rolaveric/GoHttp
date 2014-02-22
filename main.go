@@ -36,6 +36,10 @@ func main() {
 	m.Run()
 }
 
+// Middleware for Martini which tries to identify the request user by the Authorization header.
+// If no such header exists, it assumes it's a guest.
+// If the header exists but can't be decoded, it returns a 401 status.
+// It uses Martini's dependency injection system to register the user for later consumption.
 func Authentication(c martini.Context, req *http.Request, res http.ResponseWriter) {
 	// Get the Authorization header
 	a := req.Header.Get("Authorization")
@@ -71,6 +75,10 @@ func Authentication(c martini.Context, req *http.Request, res http.ResponseWrite
 	c.MapTo(s[0], (*User)(nil))
 }
 
+// Returns a handler function which checks that the authenticated user for the request
+// has a particular type of access.
+// If they don't, a 401 status resposne is made.
+// Otherwise, nothing happens - letting the next handler in the chain do it's work
 func Authorization(access string) func(User, http.ResponseWriter) {
 	// Returning a handler function that checks for the required access
 	return func(u User, res http.ResponseWriter) {
