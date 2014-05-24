@@ -1,113 +1,74 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
+	"github.com/codegangsta/negroni"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	"net/http"
-	"strings"
-
-	"github.com/go-martini/martini"
-	"github.com/martini-contrib/sessions"
 )
 
-const ANON_USER string = "guest"
-
-// Type which, through reflection, Martini uses to dependency inject the user
-// found by the Authentication middleware
-type User interface{}
-
 func main() {
-	// Starting a standard martini server,
-	// with logging and panic recovery middleware built in
-	m := martini.Classic()
+	// Starting a standard negroni stack with logging and panic recovery middleware.
+	n := negroni.Classic()
 
 	// Register middleware for storing session details in cookies
 	// NOTE: In a real world example, you do NOT want to store all your session
 	// data in cookies.  Just an ID or Token, and store everything else in a DB.
 	// Other session store implementations at: https://github.com/gorilla/sessions
 	store := sessions.NewCookieStore([]byte("secret123"))
-	m.Use(sessions.Sessions("github.com/rolaveric/GoHttp", store))
+	n.Use(NewSessions("github.com/rolaveric/GoHttp", store, false))
 
 	// Register middleware which authenticates the client
-	m.Use(Authentication)
+	n.Use(NewAuthentication())
+
+	// Starting a Gorilla mux instance for routing with
+	r := mux.NewRouter()
 
 	// Register a route which does something with the authenticated user,
 	// but doesn't care for security reasons (ie. No authorization check)
-	m.Get("/", func(u User) string {
-		return fmt.Sprintf("Hello %s!", u)
-	})
+	r.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+		u := GetUser(req)
+		fmt.Fprintf(rw, "Hello %s!", u)
+	}).Methods("GET")
 
 	// Register a route which requires the client to use Basic Authentication.
 	// If they don't, respond with 401 status and a WWW-Authenticate header
-	m.Get("/login", func(u User, req *http.Request, res http.ResponseWriter) {
+	r.HandleFunc("/login", func(rw http.ResponseWriter, req *http.Request) {
+		u := GetUser(req)
 		// If they're already logged in, redirect to "/"
-		if u != ANON_USER {
-			http.Redirect(res, req, "/", 302)
+		if u != AnonUser {
+			http.Redirect(rw, req, "/", 302)
 			return
 		}
 
 		// Otherwise, prompt for login
-		res.Header().Set("WWW-Authenticate", "Basic realm=\"Authentication Required\"")
-		http.Error(res, "Basic Authentication Required", http.StatusUnauthorized)
-	})
+		rw.Header().Set("WWW-Authenticate", "Basic realm=\"Authentication Required\"")
+		http.Error(rw, "Basic Authentication Required", http.StatusUnauthorized)
+	}).Methods("GET")
+
+	// Register a route for clearing the session
+	r.HandleFunc("/logout", func(rw http.ResponseWriter, req *http.Request) {
+		s := GetSession(req)
+		s.Options.MaxAge = -1
+		fmt.Fprintf(rw, "Logged out")
+		//http.Redirect(rw, req, "/", 302)
+	}).Methods("GET")
 
 	// Register a route which requires the authenticated user to have specific authorization
-	m.Get("/secret", Authorization("secret access"), func(u User) string {
+	/*n.HandleFunc("/secret", Authorization("secret access"), func(u User) string {
 		return fmt.Sprintf("Hello Secret Agent %s!", u)
-	})
+	}).Methods("GET")*/
+
+	// Telling negroni to use the Gorilla mux as it's handler
+	n.UseHandler(r)
 
 	// Start the server
-	m.Run()
+	n.Run(":3000")
 }
 
-// Middleware for Martini which tries to identify the request user by the Authorization header.
-// If no such header exists, it checks the session cookie.  If that also fails, it assumes the user is a guest.
-// If the header exists but can't be decoded, it returns a 401 status.
-// It uses Martini's dependency injection system to register the user for later consumption.
-func Authentication(c martini.Context, req *http.Request, res http.ResponseWriter, session sessions.Session) {
-	// Get the Authorization header
-	a := req.Header.Get("Authorization")
-	if a == "" {
-		// No header - Check for a session
-		u := session.Get("user")
-		if u == nil {
-			// No session either, set the user as a guest
-			c.MapTo(ANON_USER, (*User)(nil))
-		} else {
-			// Register the user from the session
-			c.MapTo(u, (*User)(nil))
-		}
-		return
-	}
+/*
 
-	// Remove the 'Basic ' prefix
-	a = strings.TrimPrefix(a, "Basic ")
-
-	// Decode the Authorization header
-	data, err := base64.StdEncoding.DecodeString(a)
-	if err != nil {
-		// Bad Authorization value - return 401 Unauthorized
-		http.Error(res, "Could not decode Authorization header", http.StatusUnauthorized)
-		// Note: If the response gets written to, Martini doesn't call any subsequent handlers
-		return
-	}
-
-	// Split out the username and password
-	s := strings.Split(string(data), ":")
-	if len(s) < 2 {
-		// Bad Authorization value - return 401 Unauthorized
-		http.Error(res, "Authorization header requires a username and password", http.StatusUnauthorized)
-		// Note: If the response gets written to, Martini doesn't call any subsequent handlers
-		return
-	}
-
-	// At this point, you would normally lookup a user database
-	// Since this is an example - we're just accepting the username as is
-	c.MapTo(s[0], (*User)(nil))
-
-	// Set the user in the session
-	session.Set("user", s[0])
-}
 
 // Returns a handler function which checks that the authenticated user for the request
 // has a particular type of access.
@@ -122,4 +83,4 @@ func Authorization(access string) func(User, http.ResponseWriter) {
 			http.Error(res, "Not Authorized", http.StatusUnauthorized)
 		}
 	}
-}
+}*/
